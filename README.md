@@ -1,0 +1,3 @@
+# denkis
+
+A starting point for future projects in C++ that want to create a UI but require serial comms...
