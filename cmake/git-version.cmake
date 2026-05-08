@@ -1,5 +1,9 @@
 # cmake/git_version.cmake
 
+if(NOT DEFINED SRC_DIR)
+    set(SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
+
 # 1. Fetch the full Commit SHA
 execute_process(COMMAND git rev-parse HEAD
         WORKING_DIRECTORY ${SRC_DIR}

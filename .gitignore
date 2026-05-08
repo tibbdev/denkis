@@ -3,4 +3,4 @@ build/*
 out/*
 .idea/*
 
-generate/version.h
+generated/version.h
