@@ -95,6 +95,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/serial
         ${physfs_SOURCE_DIR}/src
 )
+
 # 3. Static Linking Flags for GCC/Clang (Linux & MinGW)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Statically link libstdc++ and libgcc so users don't need them installed.
@@ -111,8 +112,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE imgui asio physfs-static)
 
 # 4. OS-Specific System Dependencies
 if(WIN32)
-    # Windows native socket, crypto, and windowing libraries needed for Asio and GLFW
-    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ws2_32 mswsock imm32 gdi32 shell32 bcrypt)
+    # Windows native socket, crypto, windowing, and setup/device APIs
+    target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE ws2_32 mswsock imm32 gdi32 shell32 bcrypt setupapi)
 
 elseif(UNIX AND NOT APPLE)
     # Linux system libraries
@@ -127,9 +128,11 @@ elseif(APPLE)
     find_library(COCOA_FRAMEWORK Cocoa)
     find_library(IOKIT_FRAMEWORK IOKit)
     find_library(COREVIDEO_FRAMEWORK CoreVideo)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation)
     target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE 
         ${COCOA_FRAMEWORK} 
         ${IOKIT_FRAMEWORK} 
         ${COREVIDEO_FRAMEWORK}
+        ${COREFOUNDATION_FRAMEWORK}
     )
 endif()
