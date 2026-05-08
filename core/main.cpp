@@ -1,20 +1,18 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <deque>
 
 // ImGui headers
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// GLFW (will automatically include standard OpenGL headers)
+// GLFW
 #include <GLFW/glfw3.h>
 
 // PhysFS
 #include <physfs.h>
-
-// Asio
-#include <asio.hpp>
 
 // Generated version header
 #include "version.h"
@@ -22,8 +20,9 @@
 // Custom Utilities
 #include "serial_utils.h"
 #include "resource_manager.h"
+#include "serial_manager.h"
+#include "custom_gui_controls.h"
 
-// GLFW Error Callback
 static void glfw_error_callback(int error, const char* description)
 {
     std::cerr << "GLFW Error " << error << ": " << description << std::endl;
@@ -40,19 +39,13 @@ int main(int argc, char** argv)
         return -1;
     }
     
-    // Mount the executable itself to load the appended ZIP file
     if (!PHYSFS_mount(argv[0], "/", 1))
     {
         std::cerr << "Failed to mount executable as archive: " << PHYSFS_getLastErrorCode() << std::endl;
     }
 
     // -------------------------------------------------------------------------
-    // 2. Initialize Asio
-    // -------------------------------------------------------------------------
-    asio::io_context io_context;
-
-    // -------------------------------------------------------------------------
-    // 3. Initialize GLFW & OpenGL Window
+    // 2. Initialize GLFW & OpenGL Window
     // -------------------------------------------------------------------------
     glfwSetErrorCallback(glfw_error_callback);
     if (!glfwInit()) 
@@ -83,13 +76,12 @@ int main(int argc, char** argv)
         return -1;
     }
     glfwMakeContextCurrent(window);
-    glfwSwapInterval(1); // Enable vsync
+    glfwSwapInterval(1);
 
-    // Maximize the window on startup
     glfwMaximizeWindow(window);
 
     // -------------------------------------------------------------------------
-    // 4. Initialize Dear ImGui
+    // 3. Initialize Dear ImGui
     // -------------------------------------------------------------------------
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -101,30 +93,40 @@ int main(int argc, char** argv)
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
-    // --- LOAD YOUR CUSTOM FONT ---
-    // Note the path: we omit "assets/" because the zip root starts inside the assets folder
-    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/SpaceMono-Bold.ttf", 24.0f);
-    
+    // Load custom font and apply it to our custom GUI theme
+    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/Cousine-Bold.ttf", 16.0f);
     if (custom_font != nullptr)
     {
-        // Tell ImGui to use this font as the default for everything
         io.FontDefault = custom_font;
     }
-    else
-    {
-        std::cerr << "Warning: Failed to load custom font. Falling back to default ImGui font." << std::endl;
-    }
-
-    // Build the font atlas so it's ready for OpenGL to render
     io.Fonts->Build();
 
+    ControlTheme theme = custom_gui::default_theme();
+    theme.custom_font = custom_font; // Ensure custom controls use the same font
+
     // -------------------------------------------------------------------------
-    // 5. Dynamic Serial Port UI Setup
+    // 4. Application State Setup
     // -------------------------------------------------------------------------
+    // UI Data
     std::vector<SerialPortInfo> enumerated_ports;
     std::vector<std::string> port_display_strings;
     std::vector<const char*> port_display_cstrs;
     int current_port_idx = 0;
+
+    int current_baud_idx = 1;
+    const char* bauds[] = { "9600", "115200", "256000", "1000000" };
+
+    // Serial Manager Data
+    SerialContext* serial_conn = nullptr;
+    ThreadSafeBuffer rx_buffer;
+    
+    // Terminal Display Data
+    std::string terminal_text;
+    const size_t MAX_TERMINAL_CHARS = 10000; // Cap at 10,000 characters
+
+    char version_text[256];
+    snprintf(version_text, sizeof(version_text), "v%s | Branch: %s | Commit: %s %s", 
+             GIT_TAG, GIT_BRANCH, GIT_SHA, GIT_DIRTY ? "(Dirty)" : "");
 
     auto refresh_serial_ports = [&]() 
     {
@@ -147,7 +149,6 @@ int main(int argc, char** argv)
         else 
         {
             int new_idx = 0;
-            
             for (size_t i = 0; i < enumerated_ports.size(); ++i) 
             {
                 const auto& port = enumerated_ports[i];
@@ -159,35 +160,37 @@ int main(int argc, char** argv)
                     new_idx = static_cast<int>(i);
                 }
             }
-            
             current_port_idx = new_idx;
         }
     };
 
-    // Run the initial scan
     refresh_serial_ports();
     double last_port_refresh_time = glfwGetTime();
 
-    // Standard Baud Rates
-    int current_baud_idx = 1;
-    const char* bauds[] = { "9600", "115200", "256000" };
-
-    // Format our version string
-    char version_text[256];
-    snprintf(version_text, sizeof(version_text), "v%s | Branch: %s | Commit: %s %s", 
-             GIT_TAG, GIT_BRANCH, GIT_SHA, GIT_DIRTY ? "(Dirty)" : "");
-
     // -------------------------------------------------------------------------
-    // 6. Main Application Loop
+    // 5. Main Loop
     // -------------------------------------------------------------------------
     while (!glfwWindowShouldClose(window))
     {
-        // Handle Auto-Refresh every 0.5 seconds
+        // Auto-Refresh ports if we are NOT currently connected
         double current_time = glfwGetTime();
-        if (current_time - last_port_refresh_time >= 0.5) 
+        if ((serial_conn == nullptr || !serial_conn->is_connected) && current_time - last_port_refresh_time >= 0.5) 
         {
             refresh_serial_ports();
             last_port_refresh_time = current_time;
+        }
+
+        // Pull data from the background serial thread into our UI string
+        std::vector<uint8_t> new_bytes = serial_manager::read_all_bytes(&rx_buffer);
+        if (!new_bytes.empty())
+        {
+            terminal_text.append(new_bytes.begin(), new_bytes.end());
+            
+            // Cap the text display so we don't run out of RAM
+            if (terminal_text.size() > MAX_TERMINAL_CHARS)
+            {
+                terminal_text.erase(0, terminal_text.size() - MAX_TERMINAL_CHARS);
+            }
         }
 
         glfwPollEvents();
@@ -196,7 +199,6 @@ int main(int argc, char** argv)
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
 
-        // --- FULLSCREEN WORKSPACE SETUP ---
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);
         ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -206,22 +208,22 @@ int main(int argc, char** argv)
 
         ImGui::Begin("MainWorkspace", nullptr, window_flags);
 
-        // --- CUSTOM TITLE / TOOL BAR ---
+        // --- TOP BAR ---
         ImGui::BeginChild("TopBar", ImVec2(0, 40), true, ImGuiWindowFlags_NoScrollbar);
         ImGui::AlignTextToFramePadding(); 
         
-        // Left Side: Serial Controls
         ImGui::Text("Port:");
         ImGui::SameLine();
         
-        ImGui::SetNextItemWidth(300); // Widened slightly for custom fonts
-        ImGui::Combo("##port", &current_port_idx, port_display_cstrs.data(), static_cast<int>(port_display_cstrs.size()));
+        // Use custom dropdown
+        ImGui::SetNextItemWidth(300);
+        custom_gui::dropdown("##port", &current_port_idx, port_display_cstrs.data(), static_cast<int>(port_display_cstrs.size()), theme);
         
         ImGui::SameLine();
         ImGui::Text("Baud:");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(100);
-        ImGui::Combo("##baud", &current_baud_idx, bauds, IM_ARRAYSIZE(bauds));
+        custom_gui::dropdown("##baud", &current_baud_idx, bauds, IM_ARRAYSIZE(bauds), theme);
 
         ImGui::SameLine();
         
@@ -230,10 +232,34 @@ int main(int argc, char** argv)
             ImGui::BeginDisabled();
         }
         
-        if (ImGui::Button("Connect")) 
+        // Connection Logic
+        bool is_connected = (serial_conn != nullptr && serial_conn->is_connected);
+        
+        if (!is_connected)
         {
-            std::cout << "Attempting to connect to " << enumerated_ports[current_port_idx].port_name 
-                      << " at " << bauds[current_baud_idx] << " baud" << std::endl;
+            if (custom_gui::button("Connect", ImVec2(100, 0), theme)) 
+            {
+                unsigned int baud = std::stoul(bauds[current_baud_idx]);
+                serial_conn = serial_manager::connect(enumerated_ports[current_port_idx].port_name, baud);
+                
+                if (serial_conn != nullptr)
+                {
+                    serial_manager::subscribe(serial_conn, &rx_buffer);
+                }
+            }
+        }
+        else
+        {
+            // Alter theme slightly for a "Disconnect" button
+            ControlTheme disconnect_theme = theme;
+            disconnect_theme.color_bg = ImVec4(0.8f, 0.2f, 0.2f, 1.0f); // Red
+            disconnect_theme.color_hover = ImVec4(0.9f, 0.3f, 0.3f, 1.0f);
+            
+            if (custom_gui::button("Disconnect", ImVec2(100, 0), disconnect_theme)) 
+            {
+                serial_manager::disconnect(serial_conn);
+                serial_conn = nullptr;
+            }
         }
 
         if (enumerated_ports.empty()) 
@@ -241,28 +267,59 @@ int main(int argc, char** argv)
             ImGui::EndDisabled();
         }
 
-        // Right Side: Version Information
         float version_text_width = ImGui::CalcTextSize(version_text).x;
         float right_align_x = ImGui::GetWindowWidth() - version_text_width - ImGui::GetStyle().WindowPadding.x;
-        
         ImGui::SameLine(right_align_x);
         ImGui::TextDisabled("%s", version_text);
 
         ImGui::EndChild(); // End TopBar
 
-        // --- MAIN CONTENT AREA ---
-        ImGui::Spacing();
-        ImGui::Text("System Status");
-        ImGui::Separator();
-        ImGui::Text("PhysFS Initialized: Yes");
-        
-        // Let's verify our executable path to ensure it mounted correctly
-        ImGui::Text("Mounted Executable: %s", argv[0]);
-        ImGui::Text("Asio I/O Context stopped: %s", io_context.stopped() ? "True" : "False");
-        
-        if (!enumerated_ports.empty() && current_port_idx < enumerated_ports.size())
+        // --- MAIN CONTENT AREA (2-Column Table) ---
+        if (ImGui::BeginTable("MainSplit", 2, ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable))
         {
-            ImGui::Text("Currently selected port: %s", enumerated_ports[current_port_idx].port_name.c_str());
+            // Setup columns (Left is fixed-ish, Right takes remaining space)
+            ImGui::TableSetupColumn("System", ImGuiTableColumnFlags_WidthFixed, 300.0f);
+            ImGui::TableSetupColumn("Terminal", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableNextRow();
+
+            // COLUMN 0: System Status
+            ImGui::TableSetColumnIndex(0);
+            ImGui::Text("System Status");
+            ImGui::Separator();
+            ImGui::Text("PhysFS Initialized: Yes");
+            ImGui::TextWrapped("Mounted Archive:\n%s", argv[0]);
+            
+            ImGui::Spacing();
+            ImGui::Text("Serial State:");
+            if (is_connected)
+            {
+                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "CONNECTED");
+                ImGui::Text("Port: %s", enumerated_ports[current_port_idx].port_name.c_str());
+                ImGui::Text("Baud: %s", bauds[current_baud_idx]);
+            }
+            else
+            {
+                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "DISCONNECTED");
+            }
+
+            // COLUMN 1: Terminal Display
+            ImGui::TableSetColumnIndex(1);
+            
+            // Create a scrolling region for the text
+            ImGuiWindowFlags terminal_flags = ImGuiWindowFlags_HorizontalScrollbar;
+            ImGui::BeginChild("TerminalRegion", ImVec2(0, 0), false, terminal_flags);
+            
+            ImGui::TextUnformatted(terminal_text.c_str());
+            
+            // Auto-scroll to bottom if scrollbar is near the bottom
+            if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+            {
+                ImGui::SetScrollHereY(1.0f);
+            }
+
+            ImGui::EndChild();
+
+            ImGui::EndTable();
         }
 
         ImGui::End(); // End MainWorkspace
@@ -280,8 +337,14 @@ int main(int argc, char** argv)
     }
 
     // -------------------------------------------------------------------------
-    // 7. Cleanup
+    // 6. Cleanup
     // -------------------------------------------------------------------------
+    // Safely disconnect serial before destroying contexts
+    if (serial_conn != nullptr)
+    {
+        serial_manager::disconnect(serial_conn);
+    }
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();
