@@ -34,6 +34,10 @@ FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git G
 # ASIO (Using the OlivierLDff wrapper, named 'asio_cmake' to avoid target collisions)
 FetchContent_Declare(asio_cmake GIT_REPOSITORY https://github.com/OlivierLDff/asio.cmake.git GIT_TAG v1.3.1)
 
+# STB Image (Single Header Library for loading images)
+FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
+FetchContent_MakeAvailable(stb)
+
 # PhysFS
 set(PHYSFS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(PHYSFS_BUILD_TEST OFF CACHE BOOL "" FORCE)
@@ -95,6 +99,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/serial
         ${physfs_SOURCE_DIR}/src
 )
+# Add the STB include directory so you can #include "stb_image.h"
+target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${stb_SOURCE_DIR})
 
 # 3. Static Linking Flags for GCC/Clang (Linux & MinGW)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -134,5 +140,32 @@ elseif(APPLE)
         ${IOKIT_FRAMEWORK} 
         ${COREVIDEO_FRAMEWORK}
         ${COREFOUNDATION_FRAMEWORK}
+    )
+endif()
+
+# Make sure the assets directory exists
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets)
+
+# Step 1: Zip the assets folder into the build directory
+add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E tar "cf" "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/assets.zip" --format=zip "."
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    COMMENT "Zipping assets folder..."
+)
+
+# Step 2: Append the zip file to the end of the executable
+if(WIN32)
+    # Windows uses the binary copy command (copy /b)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND cmd.exe /C copy /b "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>" + "assets.zip" "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
+        COMMENT "Appending assets to Windows executable..."
+    )
+else()
+    # Linux/macOS use the standard cat stream
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND sh -c "cat assets.zip >> $<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
+        WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
+        COMMENT "Appending assets to Unix executable..."
     )
 endif()

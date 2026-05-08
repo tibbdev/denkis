@@ -19,8 +19,9 @@
 // Generated version header
 #include "version.h"
 
-// Serial Utilities
+// Custom Utilities
 #include "serial_utils.h"
+#include "resource_manager.h"
 
 // GLFW Error Callback
 static void glfw_error_callback(int error, const char* description)
@@ -38,7 +39,12 @@ int main(int argc, char** argv)
         std::cerr << "PhysFS Initialization Error: " << PHYSFS_getLastErrorCode() << std::endl;
         return -1;
     }
-    PHYSFS_mount(PHYSFS_getBaseDir(), NULL, 1);
+    
+    // Mount the executable itself to load the appended ZIP file
+    if (!PHYSFS_mount(argv[0], "/", 1))
+    {
+        std::cerr << "Failed to mount executable as archive: " << PHYSFS_getLastErrorCode() << std::endl;
+    }
 
     // -------------------------------------------------------------------------
     // 2. Initialize Asio
@@ -95,6 +101,23 @@ int main(int argc, char** argv)
     ImGui_ImplGlfw_InitForOpenGL(window, true);
     ImGui_ImplOpenGL3_Init(glsl_version);
 
+    // --- LOAD YOUR CUSTOM FONT ---
+    // Note the path: we omit "assets/" because the zip root starts inside the assets folder
+    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/SpaceMono-Bold.ttf", 24.0f);
+    
+    if (custom_font != nullptr)
+    {
+        // Tell ImGui to use this font as the default for everything
+        io.FontDefault = custom_font;
+    }
+    else
+    {
+        std::cerr << "Warning: Failed to load custom font. Falling back to default ImGui font." << std::endl;
+    }
+
+    // Build the font atlas so it's ready for OpenGL to render
+    io.Fonts->Build();
+
     // -------------------------------------------------------------------------
     // 5. Dynamic Serial Port UI Setup
     // -------------------------------------------------------------------------
@@ -103,10 +126,8 @@ int main(int argc, char** argv)
     std::vector<const char*> port_display_cstrs;
     int current_port_idx = 0;
 
-    // Upgraded lambda to remember the selected port across refreshes
     auto refresh_serial_ports = [&]() 
     {
-        // Remember currently selected port name (if any)
         std::string selected_port_name = "";
         if (!enumerated_ports.empty() && current_port_idx >= 0 && current_port_idx < enumerated_ports.size()) 
         {
@@ -125,7 +146,7 @@ int main(int argc, char** argv)
         }
         else 
         {
-            int new_idx = 0; // Default to the first item if the old port disappeared
+            int new_idx = 0;
             
             for (size_t i = 0; i < enumerated_ports.size(); ++i) 
             {
@@ -133,7 +154,6 @@ int main(int argc, char** argv)
                 port_display_strings.push_back(port.port_name + " (" + port.description + ")");
                 port_display_cstrs.push_back(port_display_strings.back().c_str());
                 
-                // If we found the port the user had previously selected, update the index to match
                 if (port.port_name == selected_port_name) 
                 {
                     new_idx = static_cast<int>(i);
@@ -152,7 +172,7 @@ int main(int argc, char** argv)
     int current_baud_idx = 1;
     const char* bauds[] = { "9600", "115200", "256000" };
 
-    // Format our version string once before the loop starts
+    // Format our version string
     char version_text[256];
     snprintf(version_text, sizeof(version_text), "v%s | Branch: %s | Commit: %s %s", 
              GIT_TAG, GIT_BRANCH, GIT_SHA, GIT_DIRTY ? "(Dirty)" : "");
@@ -194,13 +214,13 @@ int main(int argc, char** argv)
         ImGui::Text("Port:");
         ImGui::SameLine();
         
-        ImGui::SetNextItemWidth(250);
+        ImGui::SetNextItemWidth(300); // Widened slightly for custom fonts
         ImGui::Combo("##port", &current_port_idx, port_display_cstrs.data(), static_cast<int>(port_display_cstrs.size()));
         
         ImGui::SameLine();
         ImGui::Text("Baud:");
         ImGui::SameLine();
-        ImGui::SetNextItemWidth(80);
+        ImGui::SetNextItemWidth(100);
         ImGui::Combo("##baud", &current_baud_idx, bauds, IM_ARRAYSIZE(bauds));
 
         ImGui::SameLine();
@@ -235,7 +255,9 @@ int main(int argc, char** argv)
         ImGui::Text("System Status");
         ImGui::Separator();
         ImGui::Text("PhysFS Initialized: Yes");
-        ImGui::Text("Base Dir: %s", PHYSFS_getBaseDir());
+        
+        // Let's verify our executable path to ensure it mounted correctly
+        ImGui::Text("Mounted Executable: %s", argv[0]);
         ImGui::Text("Asio I/O Context stopped: %s", io_context.stopped() ? "True" : "False");
         
         if (!enumerated_ports.empty() && current_port_idx < enumerated_ports.size())
