@@ -31,12 +31,22 @@ FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TA
 # Dear ImGui
 FetchContent_Declare(imgui GIT_REPOSITORY https://github.com/ocornut/imgui.git GIT_TAG v1.92.7-docking)
 
+# ImPlot (ImGui Extension)
+FetchContent_Declare(implot 
+    GIT_REPOSITORY https://github.com/epezent/implot.git 
+    GIT_TAG master 
+    SOURCE_SUBDIR skip_cmake 
+)
+
+# ImGuiFileDialog (ImGui Extension)
+FetchContent_Declare(imguifiledialog 
+    GIT_REPOSITORY https://github.com/aiekick/ImGuiFileDialog.git 
+    GIT_TAG v0.6.7
+    SOURCE_SUBDIR skip_cmake # Safely download the source without running its CMakeLists
+)
+
 # ASIO (Using the OlivierLDff wrapper, named 'asio_cmake' to avoid target collisions)
 FetchContent_Declare(asio_cmake GIT_REPOSITORY https://github.com/OlivierLDff/asio.cmake.git GIT_TAG v1.3.1)
-
-# STB Image (Single Header Library for loading images)
-FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
-FetchContent_MakeAvailable(stb)
 
 # PhysFS
 set(PHYSFS_BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -44,25 +54,53 @@ set(PHYSFS_BUILD_TEST OFF CACHE BOOL "" FORCE)
 set(PHYSFS_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(physfs GIT_REPOSITORY https://github.com/icculus/physfs.git GIT_TAG release-3.2.0)
 
+# STB Image (Single Header Library for loading images)
+FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
+
 # Download and configure dependencies
-FetchContent_MakeAvailable(glfw physfs asio_cmake)
+FetchContent_MakeAvailable(glfw physfs asio_cmake implot imguifiledialog stb)
 FetchContent_MakeAvailable(imgui)
 
 find_package(OpenGL REQUIRED)
 
 # -----------------------------------------------------------------------------
-# Setup Dear ImGui Target
+# Setup Dear ImGui Target (Now with ImPlot & IGFD bundled)
 # -----------------------------------------------------------------------------
 set(IMGUI_DIR ${imgui_SOURCE_DIR})
+set(IMPLOT_DIR ${implot_SOURCE_DIR})
+set(IGFD_DIR ${imguifiledialog_SOURCE_DIR})
+
 add_library(imgui STATIC
+        # Core ImGui
         ${IMGUI_DIR}/imgui.cpp
         ${IMGUI_DIR}/imgui_draw.cpp
         ${IMGUI_DIR}/imgui_tables.cpp
         ${IMGUI_DIR}/imgui_widgets.cpp
         ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
         ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp
+        
+        # ImPlot
+        ${IMPLOT_DIR}/implot.cpp
+        ${IMPLOT_DIR}/implot_items.cpp
+        
+        # ImGuiFileDialog
+        ${IGFD_DIR}/ImGuiFileDialog.cpp
 )
-target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+
+# Expose headers to the rest of the project
+target_include_directories(imgui PUBLIC 
+        ${IMGUI_DIR} 
+        ${IMGUI_DIR}/backends
+        ${IMPLOT_DIR}
+        ${IGFD_DIR}
+)
+
+# Tell ImGuiFileDialog to use modern C++ Filesystem instead of legacy Windows headers
+target_compile_definitions(imgui PUBLIC USE_STD_FILESYSTEM)
+
+# Silence modern C++ enum warnings inside the ImGui libraries
+target_compile_options(imgui PRIVATE "-Wno-deprecated-enum-enum-conversion")
+
 target_link_libraries(imgui PUBLIC glfw OpenGL::GL)
 
 # -----------------------------------------------------------------------------
@@ -98,9 +136,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/app
         ${CMAKE_CURRENT_SOURCE_DIR}/serial
         ${physfs_SOURCE_DIR}/src
+        ${stb_SOURCE_DIR}
 )
-# Add the STB include directory so you can #include "stb_image.h"
-target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${stb_SOURCE_DIR})
 
 # 3. Static Linking Flags for GCC/Clang (Linux & MinGW)
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -143,26 +180,24 @@ elseif(APPLE)
     )
 endif()
 
-# Make sure the assets directory exists
+# -----------------------------------------------------------------------------
+# 5. Asset Packing (Append Zip to Executable)
+# -----------------------------------------------------------------------------
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
-# Step 1: Zip the assets folder into the build directory
 add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E tar "cf" "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/assets.zip" --format=zip "."
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets
     COMMENT "Zipping assets folder..."
 )
 
-# Step 2: Append the zip file to the end of the executable
 if(WIN32)
-    # Windows uses the binary copy command (copy /b)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
         COMMAND cmd.exe /C copy /b "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>" + "assets.zip" "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
         COMMENT "Appending assets to Windows executable..."
     )
 else()
-    # Linux/macOS use the standard cat stream
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
         COMMAND sh -c "cat assets.zip >> $<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
