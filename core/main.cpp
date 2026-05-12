@@ -94,7 +94,7 @@ int main(int argc, char** argv)
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load custom font and apply it to our custom GUI theme
-    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/Cousine-Bold.ttf", 16.0f);
+    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/Cousine-Regular.ttf", 18.0f);
     if (custom_font != nullptr)
     {
         io.FontDefault = custom_font;
@@ -270,7 +270,7 @@ int main(int argc, char** argv)
         float version_text_width = ImGui::CalcTextSize(version_text).x;
         float right_align_x = ImGui::GetWindowWidth() - version_text_width - ImGui::GetStyle().WindowPadding.x;
         ImGui::SameLine(right_align_x);
-        ImGui::TextDisabled("%s", version_text);
+        ImGui::TextColored(GIT_DIRTY ? ImVec4(0.8f, 0.7f, 0.15f, 1.0f) : ImVec4(0.15f, 0.7f, 0.85f, 1.0f),"%s", version_text);
 
         ImGui::EndChild(); // End TopBar
 
