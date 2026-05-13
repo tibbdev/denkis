@@ -132,34 +132,66 @@ file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/co
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/app/*.cpp")
 file(GLOB_RECURSE SERIAL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/serial/*.cpp")
 
-# Define the targets
-add_executable(serial_service backend/serial_service.cpp serial/serial_manager.cpp)
-target_link_libraries(serial_service PRIVATE asio_cmake zenoh-cpp)
-
-add_executable(controller_service backend/controller_service.cpp)
-target_link_libraries(controller_service PRIVATE zenoh-cpp)
-
-add_executable(denkis_gui gui/main.cpp core/resource_manager.cpp core/custom_gui_controls.cpp)
-target_link_libraries(denkis_gui PRIVATE imgui glfw zenoh-cpp)
-
 # If on Windows, prevent the console window from popping up in Release mode
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     add_executable(${CMAKE_PROJECT_NAME} WIN32 ${CORE_SOURCES} ${APP_SOURCES} ${SERIAL_SOURCES})
+    
+    add_executable(denkis_gui WIN32
+        gui/main.cpp
+        ${CORE_SOURCES}
+    )
 else()
     add_executable(${CMAKE_PROJECT_NAME} ${CORE_SOURCES} ${APP_SOURCES} ${SERIAL_SOURCES})
+    
+    add_executable(denkis_gui 
+        gui/main.cpp
+        ${CORE_SOURCES}
+    )
+
 endif()
 
+# --- Serial Service ---
+add_executable(serial_service 
+    backend/serial_service.cpp 
+    ${SERIAL_SOURCES}
+)
+target_link_libraries(serial_service PRIVATE 
+    asio_cmake zenoh-cpp
+)
+target_include_directories(serial_service PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/serial
+)
+# --- Controller Service ---
+add_executable(controller_service 
+    backend/controller_service.cpp
+)
+target_link_libraries(controller_service PRIVATE 
+    zenoh-cpp
+)
+target_include_directories(controller_service PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/backend
+)
+# --- Front-end ---
+target_link_libraries(denkis_gui PRIVATE 
+    imgui 
+    glfw 
+    zenoh-cpp
+)
+
 add_dependencies(${CMAKE_PROJECT_NAME} GenerateVersionInfo)
+add_dependencies(denkis_gui GenerateVersionInfo)
 
 # Include directories
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/generated
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/core
-        ${CMAKE_CURRENT_SOURCE_DIR}/app
-        ${CMAKE_CURRENT_SOURCE_DIR}/serial
-        ${physfs_SOURCE_DIR}/src
-        ${stb_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/generated
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/app
+    ${CMAKE_CURRENT_SOURCE_DIR}/serial
+    ${physfs_SOURCE_DIR}/src
+    ${stb_SOURCE_DIR}
 )
 
 # 3. Static Linking Flags for GCC/Clang (Linux & MinGW)
