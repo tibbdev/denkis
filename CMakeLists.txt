@@ -7,6 +7,8 @@ if(POLICY CMP0091)
     cmake_policy(SET CMP0091 NEW)
 endif()
 
+set(CMAKE_TLS_VERIFY OFF)
+
 project(denkis)
 set(CMAKE_CXX_STANDARD 23)
 
