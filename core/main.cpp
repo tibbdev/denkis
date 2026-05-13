@@ -125,8 +125,8 @@ int main(int argc, char** argv)
     const size_t MAX_TERMINAL_CHARS = 10000; // Cap at 10,000 characters
 
     char version_text[256];
-    snprintf(version_text, sizeof(version_text), "v%s | Branch: %s | Commit: %s %s", 
-             GIT_TAG, GIT_BRANCH, GIT_SHA, GIT_DIRTY ? "(Dirty)" : "");
+    snprintf(version_text, sizeof(version_text), "%s | Branch: %s | Commit: %s %s", 
+             GIT_TAG, GIT_BRANCH, GIT_SHA, GIT_DIRTY ? "[DIRTY]" : "[CLEAN]");
 
     auto refresh_serial_ports = [&]() 
     {

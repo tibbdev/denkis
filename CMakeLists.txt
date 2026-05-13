@@ -59,9 +59,20 @@ FetchContent_Declare(physfs GIT_REPOSITORY https://github.com/icculus/physfs.git
 # STB Image (Single Header Library for loading images)
 FetchContent_Declare(stb GIT_REPOSITORY https://github.com/nothings/stb.git GIT_TAG master)
 
+FetchContent_Declare(
+    zenoh-c
+    GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-c.git
+    GIT_TAG 1.9.0
+)
+
+FetchContent_Declare(
+    zenoh-cpp
+    GIT_REPOSITORY https://github.com/eclipse-zenoh/zenoh-cpp.git
+    GIT_TAG 1.9.0
+)
+
 # Download and configure dependencies
-FetchContent_MakeAvailable(glfw physfs asio_cmake implot imguifiledialog stb)
-FetchContent_MakeAvailable(imgui)
+FetchContent_MakeAvailable(glfw physfs asio_cmake implot imguifiledialog stb zenoh-c zenoh-cpp imgui)
 
 find_package(OpenGL REQUIRED)
 
@@ -120,6 +131,16 @@ add_custom_target(GenerateVersionInfo ALL
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/core/*.cpp")
 file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/app/*.cpp")
 file(GLOB_RECURSE SERIAL_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/serial/*.cpp")
+
+# Define the targets
+add_executable(serial_service backend/serial_service.cpp serial/serial_manager.cpp)
+target_link_libraries(serial_service PRIVATE asio_cmake zenoh-cpp)
+
+add_executable(controller_service backend/controller_service.cpp)
+target_link_libraries(controller_service PRIVATE zenoh-cpp)
+
+add_executable(denkis_gui gui/main.cpp core/resource_manager.cpp core/custom_gui_controls.cpp)
+target_link_libraries(denkis_gui PRIVATE imgui glfw zenoh-cpp)
 
 # If on Windows, prevent the console window from popping up in Release mode
 if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -187,22 +208,37 @@ endif()
 # -----------------------------------------------------------------------------
 file(MAKE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets)
 
-add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E tar "cf" "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/assets.zip" --format=zip "."
+add_custom_command(OUTPUT "${CMAKE_BINARY_DIR}/assets.zip"
+    COMMAND ${CMAKE_COMMAND} -E tar "cf" "${CMAKE_BINARY_DIR}/assets.zip" --format=zip "."
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/assets
     COMMENT "Zipping assets folder..."
 )
 
-if(WIN32)
-    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
-        COMMAND cmd.exe /C copy /b "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>" + "assets.zip" "$<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
-        COMMENT "Appending assets to Windows executable..."
+# Function to append assets to a specific target
+function(append_assets_to_target TARGET_NAME)
+    # Ensure the zip is created before we try to append it
+    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_BINARY_DIR}/assets.zip" "$<TARGET_FILE_DIR:${TARGET_NAME}>/assets.zip"
+        COMMENT "Copying assets.zip to ${TARGET_NAME} output directory..."
     )
-else()
-    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
-        COMMAND sh -c "cat assets.zip >> $<TARGET_FILE_NAME:${CMAKE_PROJECT_NAME}>"
-        WORKING_DIRECTORY $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>
-        COMMENT "Appending assets to Unix executable..."
-    )
-endif()
+
+    if(WIN32)
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND cmd.exe /C copy /b "$<TARGET_FILE_NAME:${TARGET_NAME}>" + "assets.zip" "$<TARGET_FILE_NAME:${TARGET_NAME}>_tmp"
+            COMMAND cmd.exe /C move /y "$<TARGET_FILE_NAME:${TARGET_NAME}>_tmp" "$<TARGET_FILE_NAME:${TARGET_NAME}>"
+            WORKING_DIRECTORY $<TARGET_FILE_DIR:${TARGET_NAME}>
+            COMMENT "Appending assets to Windows executable: ${TARGET_NAME}..."
+        )
+    else()
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND cat "$<TARGET_FILE:${TARGET_NAME}>" "${CMAKE_BINARY_DIR}/assets.zip" > "$<TARGET_FILE:${TARGET_NAME}>.tmp"
+            COMMAND mv "$<TARGET_FILE:${TARGET_NAME}>.tmp" "$<TARGET_FILE:${TARGET_NAME}>"
+            COMMAND chmod +x "$<TARGET_FILE:${TARGET_NAME}>"
+            COMMENT "Appending assets to Unix executable: ${TARGET_NAME}..."
+        )
+    endif()
+endfunction()
+
+# Apply the asset appending to both targets
+append_assets_to_target(denkis)
+append_assets_to_target(denkis_gui)
