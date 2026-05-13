@@ -156,7 +156,7 @@ add_executable(serial_service
     ${SERIAL_SOURCES}
 )
 target_link_libraries(serial_service PRIVATE 
-    asio_cmake zenoh-cpp
+    asio zenoh-cpp
 )
 target_include_directories(serial_service PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}
