@@ -94,7 +94,7 @@ int main(int argc, char** argv)
     ImGui_ImplOpenGL3_Init(glsl_version);
 
     // Load custom font and apply it to our custom GUI theme
-    ImFont* custom_font = resource_manager::load_font("fonts/Cousine/Cousine-Regular.ttf", 18.0f);
+    ImFont* custom_font = resource_manager::load_font("fonts/Space_Mono/SpaceMono-Regular.ttf", 24.0f);
     if (custom_font != nullptr)
     {
         io.FontDefault = custom_font;
