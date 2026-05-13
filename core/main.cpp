@@ -252,8 +252,8 @@ int main(int argc, char** argv)
         {
             // Alter theme slightly for a "Disconnect" button
             ControlTheme disconnect_theme = theme;
-            disconnect_theme.color_bg = ImVec4(0.8f, 0.2f, 0.2f, 1.0f); // Red
-            disconnect_theme.color_hover = ImVec4(0.9f, 0.3f, 0.3f, 1.0f);
+            disconnect_theme.color_bg    = custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::Red); // Red
+            disconnect_theme.color_hover = custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::Orange);
             
             if (custom_gui::button("Disconnect", ImVec2(100, 0), disconnect_theme)) 
             {
@@ -270,7 +270,7 @@ int main(int argc, char** argv)
         float version_text_width = ImGui::CalcTextSize(version_text).x;
         float right_align_x = ImGui::GetWindowWidth() - version_text_width - ImGui::GetStyle().WindowPadding.x;
         ImGui::SameLine(right_align_x);
-        ImGui::TextColored(GIT_DIRTY ? ImVec4(0.8f, 0.7f, 0.15f, 1.0f) : ImVec4(0.15f, 0.7f, 0.85f, 1.0f),"%s", version_text);
+        ImGui::TextColored(GIT_DIRTY ? custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::Yellow) : custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::OffWhite),"%s", version_text);
 
         ImGui::EndChild(); // End TopBar
 
@@ -285,21 +285,27 @@ int main(int argc, char** argv)
             // COLUMN 0: System Status
             ImGui::TableSetColumnIndex(0);
             ImGui::Text("System Status");
+            
             ImGui::Separator();
-            ImGui::Text("PhysFS Initialized: Yes");
-            ImGui::TextWrapped("Mounted Archive:\n%s", argv[0]);
+            
+            ImGui::Text("PhysFS Initialized: ");
+            ImGui::SameLine();
+            ImGui::TextColored(custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::LightGreen), "YES");
+
+            ImGui::Text("Mounted Archive:");
+            ImGui::TextColored(custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::Gray), "%s", argv[0]);
             
             ImGui::Spacing();
             ImGui::Text("Serial State:");
             if (is_connected)
             {
-                ImGui::TextColored(ImVec4(0.2f, 1.0f, 0.2f, 1.0f), "CONNECTED");
+                ImGui::TextColored(custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::LightGreen), "CONNECTED");
                 ImGui::Text("Port: %s", enumerated_ports[current_port_idx].port_name.c_str());
                 ImGui::Text("Baud: %s", bauds[current_baud_idx]);
             }
             else
             {
-                ImGui::TextColored(ImVec4(1.0f, 0.2f, 0.2f, 1.0f), "DISCONNECTED");
+                ImGui::TextColored(custom_gui::sweetie16::GetSweetieColor(custom_gui::sweetie16::SweetieColor::Red), "DISCONNECTED");
             }
 
             // COLUMN 1: Terminal Display

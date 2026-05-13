@@ -5,12 +5,12 @@ namespace custom_gui
     ControlTheme default_theme()
     {
         ControlTheme theme;
-        theme.color_bg = ImVec4(0.16f, 0.29f, 0.48f, 1.00f);
-        theme.color_hover = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
-        theme.color_active = ImVec4(0.06f, 0.53f, 0.98f, 1.00f);
-        theme.color_text = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
-        theme.rounding = 6.0f; // Soft rounded corners
-        theme.custom_font = nullptr; // Fallback to ImGui default
+        theme.color_bg      = sweetie16::GetSweetieColor(sweetie16::SweetieColor::Blue);
+        theme.color_hover   = sweetie16::GetSweetieColor(sweetie16::SweetieColor::LightBlue);
+        theme.color_active  = sweetie16::GetSweetieColor(sweetie16::SweetieColor::DarkBlue);
+        theme.color_text    = sweetie16::GetSweetieColor(sweetie16::SweetieColor::OffWhite);
+        theme.rounding      = 6.0f; // Soft rounded corners
+        theme.custom_font   = nullptr; // Fallback to ImGui default
         return theme;
     }
 
